@@ -1,23 +1,23 @@
 import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
-import tempfile
 import pandas as pd
 import os
 from datetime import datetime
 
-st.set_page_config(page_title="Civic Issue Reporter")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(page_title="Civic Issue Reporter", layout="centered")
 
 st.title("🛣️ Civic Issue Reporter")
 
-# ---------- LOAD MODEL ----------
+# ---------------- LOAD MODEL ----------------
 @st.cache_resource
 def load_model():
     return YOLO("model.pt")
 
 model = load_model()
 
-# ---------- STORAGE ----------
+# ---------------- STORAGE SETUP ----------------
 DB_FILE = "issues.csv"
 UPLOAD_DIR = "uploads"
 
@@ -25,39 +25,55 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 if not os.path.exists(DB_FILE):
     df = pd.DataFrame(columns=[
-        "timestamp", "image_path", "prediction",
-        "confidence", "authority", "status"
+        "timestamp",
+        "image_path",
+        "prediction",
+        "confidence",
+        "authority",
+        "status"
     ])
     df.to_csv(DB_FILE, index=False)
 
-# ---------- TABS ----------
+# ---------------- TABS ----------------
 tab1, tab2 = st.tabs(["📸 Report Issue", "🧑‍💼 Admin Dashboard"])
 
-# ---------- USER TAB ----------
+# =========================================================
+# ===================== USER TAB ==========================
+# =========================================================
 with tab1:
     st.subheader("Report a Civic Issue")
+
+    st.write("Upload an image **or** take a photo directly")
 
     uploaded_file = st.file_uploader(
         "Upload road image",
         type=["jpg", "jpeg", "png"]
     )
 
+    camera_photo = st.camera_input("Take a photo")
+
+    image = None
+
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Image", width=500)
+
+    elif camera_photo is not None:
+        image = Image.open(camera_photo)
+
+    if image is not None:
+        st.image(image, caption="Captured Image", width=500)
 
         if st.button("Analyze Issue"):
-            with st.spinner("Analyzing..."):
-
-                # Save image permanently
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            with st.spinner("Analyzing image..."):
+                # Save image
+                timestamp_id = datetime.now().strftime("%Y%m%d_%H%M%S")
                 image_path = os.path.join(
-                    UPLOAD_DIR, f"{timestamp}_{uploaded_file.name}"
+                    UPLOAD_DIR, f"{timestamp_id}.jpg"
                 )
                 image.save(image_path)
 
+                # Run model
                 results = model(image_path)
-
                 pred_class = results[0].names[results[0].probs.top1]
                 confidence = float(results[0].probs.top1conf)
 
@@ -66,7 +82,7 @@ with tab1:
                 else:
                     authority = "No action required"
 
-            # SAVE TO CSV
+            # Save to CSV
             df = pd.read_csv(DB_FILE)
 
             if "status" not in df.columns:
@@ -83,13 +99,15 @@ with tab1:
 
             df.to_csv(DB_FILE, index=False)
 
-            st.success("Issue reported successfully!")
+            st.success("✅ Issue reported successfully!")
             st.write(f"**Prediction:** {pred_class}")
             st.write(f"**Confidence:** {round(confidence, 3)}")
             st.write(f"**Authority:** {authority}")
             st.write("**Status:** Reported")
 
-# ---------- ADMIN TAB ----------
+# =========================================================
+# =================== ADMIN TAB ===========================
+# =========================================================
 with tab2:
     st.subheader("🧑‍💼 Admin Dashboard")
 
